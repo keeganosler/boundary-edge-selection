@@ -43,6 +43,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     }),
   });
+  isDrawing: boolean = false;
 
   ngOnInit(): void {
     setTimeout(() => this.map?.updateSize());
@@ -64,6 +65,9 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     });
 
     this.addLayer(this.createGeojson(TestData.boundary));
+
+    if (this.isDrawing) {
+    }
   }
 
   createGeojson(boundary: BoundaryModel) {
@@ -91,10 +95,9 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   addLayer(geojson) {
     let vec = new VectorSource({
-      features: new GeoJSON().readFeatures(
-        geojson,
-        geojson.features[0].crs ? undefined : { featureProjection: 'EPSG:3857' }
-      ),
+      features: new GeoJSON().readFeatures(geojson, {
+        featureProjection: 'EPSG:3857',
+      }),
     });
     let vecLayer = new VectorLayer({
       source: vec,
@@ -103,7 +106,11 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.map.addLayer(vecLayer);
     this.map.getView().fit(vec.getExtent(), {
       size: this.map.getSize(),
-      padding: [10, 10, 10, 10],
+      padding: [25, 25, 25, 25],
     });
+  }
+
+  onDrawButton() {
+    this.isDrawing = !this.isDrawing;
   }
 }
