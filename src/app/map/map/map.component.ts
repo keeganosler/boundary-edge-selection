@@ -10,7 +10,7 @@ import { Map, View } from 'ol';
 import GeoJSON from 'ol/format/GeoJSON';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
-import { fromLonLat } from 'ol/proj';
+import { fromLonLat, toLonLat } from 'ol/proj';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
 import { Fill, Stroke, Style } from 'ol/style';
@@ -25,6 +25,13 @@ const fieldStyle = new Style({
   stroke: new Stroke({
     color: 'white',
     width: 2,
+  }),
+});
+
+const lineStyle = new Style({
+  stroke: new Stroke({
+    color: '#aa46be',
+    width: 4.5,
   }),
 });
 
@@ -44,6 +51,8 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     }),
   });
   isDrawing: boolean = false;
+  geomtry: any;
+  collectedPoints: number[][] = [];
 
   ngOnInit(): void {
     setTimeout(() => this.map?.updateSize());
@@ -64,13 +73,75 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       }),
     });
 
-    this.addLayer(this.createGeojson(TestData.boundary));
+    this.addLayer(
+      this.createMultiPolygonFromBoundary(TestData.boundary),
+      fieldStyle,
+      true
+    );
 
-    if (this.isDrawing) {
+    this.map.on('click', (e: any) => {
+      let outerBoundary = TestData.boundary.polygons.map(
+        (p) => p.rings[0].ring
+      )[0];
+
+      this.makeLinestring(
+        this.findClosestPointFromBoundary(
+          toLonLat(e.coordinate),
+          outerBoundary
+        ),
+        outerBoundary
+      );
+    });
+  }
+
+  findClosestPointFromBoundary(point: number[], outerBoundary: number[][]) {
+    return outerBoundary.reduce((prev, curr) => {
+      return Math.abs(curr[0] - point[0]) < Math.abs(prev[0] - point[0]) &&
+        Math.abs(curr[1] - point[1]) < Math.abs(prev[1] - point[1])
+        ? curr
+        : prev;
+    });
+  }
+
+  makeLinestring(correctPoint: number[], outerBoundary: number[][]) {
+    if (this.collectedPoints.length) {
+      this.collectedPoints.push(
+        ...outerBoundary.slice(
+          outerBoundary.indexOf(
+            this.collectedPoints[this.collectedPoints.length - 1]
+          ) + 1,
+          outerBoundary.indexOf(correctPoint)
+        )
+      );
+    }
+    this.collectedPoints.push(correctPoint);
+    if (this.collectedPoints.length > 1) {
+      this.addLayer(
+        this.createMultiLineStringFromPoints(this.collectedPoints),
+        lineStyle,
+        false
+      );
     }
   }
 
-  createGeojson(boundary: BoundaryModel) {
+  createMultiLineStringFromPoints(points: number[][]) {
+    let features: any[] = [];
+    let feature = {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: points,
+      },
+      properties: null,
+    };
+    features.push(feature);
+    return {
+      type: 'FeatureCollection',
+      features: features,
+    } as GeojsonModel;
+  }
+
+  createMultiPolygonFromBoundary(boundary: BoundaryModel) {
     let features: FeatureModel[] = [];
     boundary.polygons.forEach((polygon) => {
       let coordinates: any[] = [];
@@ -93,24 +164,24 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     } as GeojsonModel;
   }
 
-  addLayer(geojson) {
+  addLayer(geojson: GeojsonModel, style: Style, zoomToFeature: boolean) {
     let vec = new VectorSource({
       features: new GeoJSON().readFeatures(geojson, {
         featureProjection: 'EPSG:3857',
       }),
     });
+    this.geomtry = vec;
     let vecLayer = new VectorLayer({
       source: vec,
-      style: fieldStyle,
+      style: style,
     });
-    this.map.addLayer(vecLayer);
-    this.map.getView().fit(vec.getExtent(), {
-      size: this.map.getSize(),
-      padding: [25, 25, 25, 25],
-    });
-  }
 
-  onDrawButton() {
-    this.isDrawing = !this.isDrawing;
+    this.map.addLayer(vecLayer);
+    if (zoomToFeature) {
+      this.map.getView().fit(vec.getExtent(), {
+        size: this.map.getSize(),
+        padding: [25, 25, 25, 25],
+      });
+    }
   }
 }
