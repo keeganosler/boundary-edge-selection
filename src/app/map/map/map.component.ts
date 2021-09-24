@@ -6,15 +6,17 @@ import {
   OnInit,
   ViewChild,
 } from '@angular/core';
-import { Map, View } from 'ol';
+import { Feature, Map, View } from 'ol';
 import GeoJSON from 'ol/format/GeoJSON';
-import { defaults, Modify, Select } from 'ol/interaction';
+import Geometry from 'ol/geom/Geometry';
+import Point from 'ol/geom/Point';
+import { Modify, Select } from 'ol/interaction';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
 import { fromLonLat } from 'ol/proj';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
-import { Fill, Stroke, Style } from 'ol/style';
+import { Fill, Icon, Stroke, Style } from 'ol/style';
 import TestData from './boundary-data.model';
 import { BoundaryModel } from './boundary.model';
 import { FeatureModel, GeojsonModel } from './geojson.model';
@@ -32,14 +34,17 @@ const fieldStyle = new Style({
 const lineStyle = new Style({
   stroke: new Stroke({
     color: '#aa46be',
-    width: 4.5,
+    width: 8,
   }),
 });
 
-const select = new Select({});
-
-const modify = new Modify({
-  features: select.getFeatures(),
+const pointStyle = new Style({
+  image: new Icon({
+    color: '#aa46be',
+    src: '/assets/map-marker-alt.png',
+    scale: 0.075,
+    anchor: [0.5, 1],
+  }),
 });
 
 @Component({
@@ -61,6 +66,30 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
   geomtry: any;
   collectedPoints: number[][] = [];
   drawingClockwise: boolean;
+  startPointFeature: Feature<Geometry> = new Feature({
+    geometry: new Point(
+      fromLonLat(TestData.boundary.polygons.map((p) => p.rings[0].ring)[0][0])
+    ),
+  });
+  endPointFeature: Feature<Geometry> = new Feature({
+    geometry: new Point(
+      fromLonLat(
+        TestData.boundary.polygons.map((p) => p.rings[0].ring)[0][
+          Math.round(
+            TestData.boundary.polygons.map((p) => p.rings[0].ring)[0].length / 2
+          )
+        ]
+      )
+    ),
+  });
+  pointsVectorSource: VectorSource<Geometry> = new VectorSource({
+    features: [this.startPointFeature, this.endPointFeature],
+  });
+  pointsVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
+    source: this.pointsVectorSource,
+  });
+  select: Select;
+  modify: Modify;
 
   ngOnInit(): void {
     setTimeout(() => this.map?.updateSize());
@@ -70,9 +99,10 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.layers.push(this.satellite);
+    this.startPointFeature.setStyle(pointStyle);
+    this.endPointFeature.setStyle(pointStyle);
     this.map = new Map({
-      interactions: defaults().extend([select, modify]),
-      controls: [],
+      interactions: [],
       target: this.viewMap.nativeElement,
       layers: this.layers,
       overlays: [],
@@ -82,91 +112,20 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       }),
     });
 
+    this.modify = new Modify({
+      hitDetection: this.pointsVectorLayer,
+      source: this.pointsVectorSource,
+    });
+    this.map.addInteraction(this.modify);
+
     this.addLayer(
       this.createMultiPolygonFromBoundary(TestData.boundary),
       fieldStyle,
       true
     );
 
-    let outerBoundary = TestData.boundary.polygons.map(
-      (p) => p.rings[0].ring
-    )[0];
-
-    this.addLayer(
-      this.createMultiLineStringFromPoints(
-        outerBoundary.slice(0, Math.round(outerBoundary.length / 2))
-      ),
-      lineStyle,
-      false
-    );
-
-    // this.map.on('click', (e: any) => {
-    //   let outerBoundary = TestData.boundary.polygons.map(
-    //     (p) => p.rings[0].ring
-    //   )[0];
-
-    //   this.makeLinestring(
-    //     this.findClosestPointFromBoundary(
-    //       toLonLat(e.coordinate),
-    //       outerBoundary
-    //     ),
-    //     outerBoundary
-    //   );
-    // });
+    this.map.addLayer(this.pointsVectorLayer);
   }
-
-  // findClosestPointFromBoundary(point: number[], outerBoundary: number[][]) {
-  //   return outerBoundary.reduce((prev, curr) => {
-  //     return Math.abs(curr[0] - point[0]) < Math.abs(prev[0] - point[0]) &&
-  //       Math.abs(curr[1] - point[1]) < Math.abs(prev[1] - point[1])
-  //       ? curr
-  //       : prev;
-  //   });
-  // }
-
-  // makeLinestring(correctPoint: number[], outerBoundary: number[][]) {
-  //   let index1: number = outerBoundary.indexOf(
-  //     this.collectedPoints[this.collectedPoints.length - 1]
-  //   );
-  //   let index2: number = outerBoundary.indexOf(correctPoint);
-  //   if (this.collectedPoints.length == 1) {
-  //     this.drawingClockwise = index2 > index1;
-  //   }
-  //   if (this.collectedPoints.length) {
-  //     if (this.drawingClockwise) {
-  //       this.collectedPoints.push(...outerBoundary.slice(index1 + 1, index2));
-  //     } else {
-  //       console.log('index1: ', index1, 'index2: ', index2);
-  //       if (index1 > index2) {
-  //         console.log('reverse slice');
-  //         this.collectedPoints.push(...outerBoundary.slice(index2 + 1, index1));
-  //       } else {
-  //         console.log('two lists');
-  //         let list1 = outerBoundary.slice(index2, outerBoundary.length - 1);
-  //         let list2 = outerBoundary.slice(0, index1);
-  //         console.log(
-  //           'list1: ',
-  //           list1.map((l) => outerBoundary.indexOf(l))
-  //         );
-  //         console.log(
-  //           'list2: ',
-  //           list2.map((l) => outerBoundary.indexOf(l))
-  //         );
-  //         this.collectedPoints.push(...list1);
-  //         this.collectedPoints.push(...list2);
-  //       }
-  //       // this.collectedPoints.push(...outerBoundary.slice(index2 + 1, index1));
-  //     }
-  //   }
-  //   this.collectedPoints.push(correctPoint);
-  //   if (this.collectedPoints.length > 1) {
-  //     this.addLayer(
-  //       this.createMultiLineStringFromPoints(this.collectedPoints),
-  //       lineStyle,
-  //       false
-  //     );
-  //   }
-  // }
 
   createMultiLineStringFromPoints(points: number[][]) {
     let features: any[] = [];
@@ -214,12 +173,10 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
         featureProjection: 'EPSG:3857',
       }),
     });
-    this.geomtry = vec;
     let vecLayer = new VectorLayer({
       source: vec,
       style: style,
     });
-
     this.map.addLayer(vecLayer);
     if (zoomToFeature) {
       this.map.getView().fit(vec.getExtent(), {
