@@ -10,10 +10,11 @@ import { Feature, Map, View } from 'ol';
 import GeoJSON from 'ol/format/GeoJSON';
 import Geometry from 'ol/geom/Geometry';
 import Point from 'ol/geom/Point';
-import { Modify, Select } from 'ol/interaction';
+import { Modify, Snap } from 'ol/interaction';
+import { ModifyEvent } from 'ol/interaction/Modify';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
-import { fromLonLat } from 'ol/proj';
+import { fromLonLat, toLonLat } from 'ol/proj';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
 import { Fill, Icon, Stroke, Style } from 'ol/style';
@@ -88,8 +89,20 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
   pointsVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
     source: this.pointsVectorSource,
   });
-  select: Select;
-  modify: Modify;
+  boundaryVectorSource = new VectorSource({
+    features: new GeoJSON().readFeatures(
+      this.createMultiPolygonFromBoundary(TestData.boundary),
+      {
+        featureProjection: 'EPSG:3857',
+      }
+    ),
+  });
+  boundaryVectorLayer = new VectorLayer({
+    source: this.boundaryVectorSource,
+    style: fieldStyle,
+  });
+  modifyInteraction: Modify;
+  snapInteraction: Snap;
 
   ngOnInit(): void {
     setTimeout(() => this.map?.updateSize());
@@ -112,19 +125,61 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       }),
     });
 
-    this.modify = new Modify({
+    this.map.addLayer(this.boundaryVectorLayer);
+    this.map.addLayer(this.pointsVectorLayer);
+    this.map.getView().fit(this.boundaryVectorSource.getExtent(), {
+      size: this.map.getSize(),
+      padding: [25, 25, 25, 25],
+    });
+
+    this.modifyInteraction = new Modify({
       hitDetection: this.pointsVectorLayer,
       source: this.pointsVectorSource,
     });
-    this.map.addInteraction(this.modify);
+    this.map.addInteraction(this.modifyInteraction);
+    this.modifyInteraction.setActive(true);
+    this.modifyInteraction.on('modifyend', (e: ModifyEvent) => {
+      let outerBoundary = TestData.boundary.polygons.map(
+        (p) => p.rings[0].ring
+      )[0];
+      let currentPoints: number[][] = this.pointsVectorSource
+        .getFeatures()
+        .map((feature: Feature<Geometry>) => {
+          return this.findClosestPointFromBoundary(
+            toLonLat((feature.getGeometry() as Point).getCoordinates()),
+            outerBoundary
+          );
+        });
+      let idx1: number = outerBoundary.indexOf(currentPoints[0]);
+      let idx2: number = outerBoundary.indexOf(currentPoints[1]);
+      let sum1: number = idx2 - idx1;
+      let sum2: number = idx1 + (outerBoundary.length - idx2);
+      if (sum1 < sum2) {
+        this.addLayer(
+          this.createMultiLineStringFromPoints(outerBoundary.slice(idx1, idx2)),
+          lineStyle,
+          false
+        );
+      } else {
+        this.addLayer(
+          this.createMultiLineStringFromPoints([
+            ...outerBoundary.slice(0, idx1),
+            ...outerBoundary.slice(idx2, outerBoundary.length),
+          ]),
+          lineStyle,
+          false
+        );
+      }
+    });
+  }
 
-    this.addLayer(
-      this.createMultiPolygonFromBoundary(TestData.boundary),
-      fieldStyle,
-      true
-    );
-
-    this.map.addLayer(this.pointsVectorLayer);
+  findClosestPointFromBoundary(point: number[], outerBoundary: number[][]) {
+    return outerBoundary.reduce((prev, curr) => {
+      return Math.abs(curr[0] - point[0]) < Math.abs(prev[0] - point[0]) &&
+        Math.abs(curr[1] - point[1]) < Math.abs(prev[1] - point[1])
+        ? curr
+        : prev;
+    });
   }
 
   createMultiLineStringFromPoints(points: number[][]) {
@@ -168,6 +223,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   addLayer(geojson: GeojsonModel, style: Style, zoomToFeature: boolean) {
+    console.log('geojson: ', geojson);
     let vec = new VectorSource({
       features: new GeoJSON().readFeatures(geojson, {
         featureProjection: 'EPSG:3857',
