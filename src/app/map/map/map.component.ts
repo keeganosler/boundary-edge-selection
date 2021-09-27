@@ -9,6 +9,7 @@ import {
 import { Feature, Map, View } from 'ol';
 import GeoJSON from 'ol/format/GeoJSON';
 import Geometry from 'ol/geom/Geometry';
+import LineString from 'ol/geom/LineString';
 import Point from 'ol/geom/Point';
 import { Modify, Snap } from 'ol/interaction';
 import { ModifyEvent } from 'ol/interaction/Modify';
@@ -156,15 +157,20 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       let sum2: number = idx1 + (outerBoundary.length - idx2);
       if (sum1 < sum2) {
         this.addLayer(
-          this.createMultiLineStringFromPoints(outerBoundary.slice(idx1, idx2)),
+          this.createMultiLineStringFromPoints(
+            outerBoundary.slice(
+              idx1 < idx2 ? idx1 + 1 : idx2 + 1,
+              idx1 < idx2 ? idx2 : idx1
+            )
+          ),
           lineStyle,
           false
         );
       } else {
         this.addLayer(
           this.createMultiLineStringFromPoints([
-            ...outerBoundary.slice(0, idx1),
             ...outerBoundary.slice(idx2, outerBoundary.length),
+            ...outerBoundary.slice(0, idx1),
           ]),
           lineStyle,
           false
@@ -223,7 +229,19 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   addLayer(geojson: GeojsonModel, style: Style, zoomToFeature: boolean) {
-    console.log('geojson: ', geojson);
+    //console.log('geojson: ', geojson.features[0].geometry.coordinates);
+    this.map.getLayers().forEach((layer) => {
+      if (layer instanceof VectorLayer) {
+        (layer as VectorLayer<VectorSource<Geometry>>)
+          .getSource()
+          .getFeatures()
+          .forEach((feature) => {
+            if (feature.getGeometry() instanceof LineString) {
+              this.map.removeLayer(layer);
+            }
+          });
+      }
+    });
     let vec = new VectorSource({
       features: new GeoJSON().readFeatures(geojson, {
         featureProjection: 'EPSG:3857',
