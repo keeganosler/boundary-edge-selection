@@ -12,7 +12,6 @@ import Geometry from 'ol/geom/Geometry';
 import LineString from 'ol/geom/LineString';
 import Point from 'ol/geom/Point';
 import { Modify, Snap } from 'ol/interaction';
-import { ModifyEvent } from 'ol/interaction/Modify';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
 import { fromLonLat, toLonLat } from 'ol/proj';
@@ -40,9 +39,17 @@ const lineStyle = new Style({
   }),
 });
 
-const pointStyle = new Style({
+const pointStyle1 = new Style({
   image: new Icon({
-    color: '#aa46be',
+    color: 'red',
+    src: '/assets/map-marker-alt.png',
+    scale: 0.075,
+    anchor: [0.5, 1],
+  }),
+});
+const pointStyle2 = new Style({
+  image: new Icon({
+    color: 'green',
     src: '/assets/map-marker-alt.png',
     scale: 0.075,
     anchor: [0.5, 1],
@@ -72,6 +79,9 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     geometry: new Point(
       fromLonLat(TestData.boundary.polygons.map((p) => p.rings[0].ring)[0][0])
     ),
+    properties: {
+      start: true,
+    },
   });
   endPointFeature: Feature<Geometry> = new Feature({
     geometry: new Point(
@@ -83,13 +93,18 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
         ]
       )
     ),
+    properties: {
+      end: true,
+    },
   });
   pointsVectorSource: VectorSource<Geometry> = new VectorSource({
     features: [this.startPointFeature, this.endPointFeature],
   });
   pointsVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
     source: this.pointsVectorSource,
+    updateWhileInteracting: true,
   });
+  startPointMoving: boolean;
   boundaryVectorSource = new VectorSource({
     features: new GeoJSON().readFeatures(
       this.createMultiPolygonFromBoundary(TestData.boundary),
@@ -113,8 +128,8 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.layers.push(this.satellite);
-    this.startPointFeature.setStyle(pointStyle);
-    this.endPointFeature.setStyle(pointStyle);
+    this.startPointFeature.setStyle(pointStyle1);
+    this.endPointFeature.setStyle(pointStyle2);
     this.map = new Map({
       interactions: [],
       target: this.viewMap.nativeElement,
@@ -132,51 +147,134 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       size: this.map.getSize(),
       padding: [25, 25, 25, 25],
     });
-
     this.modifyInteraction = new Modify({
       hitDetection: this.pointsVectorLayer,
       source: this.pointsVectorSource,
     });
     this.map.addInteraction(this.modifyInteraction);
     this.modifyInteraction.setActive(true);
-    this.modifyInteraction.on('modifyend', (e: ModifyEvent) => {
-      let outerBoundary = TestData.boundary.polygons.map(
-        (p) => p.rings[0].ring
-      )[0];
-      let currentPoints: number[][] = this.pointsVectorSource
-        .getFeatures()
-        .map((feature: Feature<Geometry>) => {
-          return this.findClosestPointFromBoundary(
-            toLonLat((feature.getGeometry() as Point).getCoordinates()),
-            outerBoundary
-          );
-        });
-      let idx1: number = outerBoundary.indexOf(currentPoints[0]);
-      let idx2: number = outerBoundary.indexOf(currentPoints[1]);
-      let sum1: number = idx2 - idx1;
-      let sum2: number = idx1 + (outerBoundary.length - idx2);
-      if (sum1 < sum2) {
-        this.addLayer(
-          this.createMultiLineStringFromPoints(
-            outerBoundary.slice(
-              idx1 < idx2 ? idx1 + 1 : idx2 + 1,
-              idx1 < idx2 ? idx2 : idx1
-            )
-          ),
-          lineStyle,
-          false
+    this.endPointFeature.on('change', (e) => {
+      this.startPointMoving = false;
+    });
+    this.startPointFeature.on('change', (e) => {
+      this.startPointMoving = true;
+    });
+    this.map.on('pointerdrag', (e) => {
+      this.snapToBoundaryLine(e.coordinate, this.startPointMoving);
+      this.updateLine();
+    });
+  }
+
+  snapToBoundaryLine(coordinate: number[], firstPoint: boolean) {
+    if (firstPoint != undefined) {
+      let closestFeature =
+        this.boundaryVectorSource.getClosestFeatureToCoordinate(coordinate);
+      let geometry = closestFeature.getGeometry();
+      let closestPoint = geometry.getClosestPoint(coordinate);
+      if (firstPoint) {
+        (this.startPointFeature.getGeometry() as Point).setCoordinates(
+          closestPoint
         );
       } else {
-        this.addLayer(
-          this.createMultiLineStringFromPoints([
-            ...outerBoundary.slice(idx2, outerBoundary.length),
-            ...outerBoundary.slice(0, idx1),
-          ]),
-          lineStyle,
-          false
+        (this.endPointFeature.getGeometry() as Point).setCoordinates(
+          closestPoint
         );
       }
-    });
+    }
+  }
+
+  updateLine2(coordinate: number[]) {
+    let outerBoundary = TestData.boundary.polygons.map(
+      (p) => p.rings[0].ring
+    )[0];
+    let currentPoints: number[][] = [];
+    this.pointsVectorSource
+      .getFeatures()
+      .forEach((feature: Feature<Geometry>) => {
+        let point = this.findClosestPointFromBoundary(
+          toLonLat((feature.getGeometry() as Point).getCoordinates()),
+          outerBoundary
+        );
+        currentPoints.push(point);
+        let geoPoint = this.boundaryVectorSource
+          .getClosestFeatureToCoordinate(coordinate)
+          .getGeometry()
+          .getClosestPoint(coordinate);
+        if (feature == this.startPointFeature) {
+          (this.startPointFeature.getGeometry() as Point).setCoordinates(
+            geoPoint
+          );
+        } else if (feature == this.endPointFeature) {
+          (this.endPointFeature.getGeometry() as Point).setCoordinates(
+            geoPoint
+          );
+        }
+      });
+    let idx1: number = outerBoundary.indexOf(currentPoints[0]);
+    let idx2: number = outerBoundary.indexOf(currentPoints[1]);
+    let sum1: number = idx2 - idx1;
+    let sum2: number = idx1 + (outerBoundary.length - idx2);
+    if (sum1 < sum2) {
+      this.addLayer(
+        this.createMultiLineStringFromPoints(
+          outerBoundary.slice(
+            idx1 < idx2 ? idx1 + 1 : idx2 + 1,
+            idx1 < idx2 ? idx2 : idx1
+          )
+        ),
+        lineStyle,
+        false
+      );
+    } else {
+      this.addLayer(
+        this.createMultiLineStringFromPoints([
+          ...outerBoundary.slice(idx2, outerBoundary.length),
+          ...outerBoundary.slice(0, idx1),
+        ]),
+        lineStyle,
+        false
+      );
+    }
+  }
+
+  updateLine() {
+    let outerBoundary = TestData.boundary.polygons.map(
+      (p) => p.rings[0].ring
+    )[0];
+    let currentPoints: number[][] = this.pointsVectorSource
+      .getFeatures()
+      .map((feature: Feature<Geometry>) => {
+        let point = this.findClosestPointFromBoundary(
+          toLonLat((feature.getGeometry() as Point).getCoordinates()),
+          outerBoundary
+        );
+        return point;
+      });
+    let idx1: number = outerBoundary.indexOf(currentPoints[0]);
+    let idx2: number = outerBoundary.indexOf(currentPoints[1]);
+    let sum1: number = idx2 - idx1;
+    let sum2: number = idx1 + (outerBoundary.length - idx2);
+    if (sum1 < sum2) {
+      this.addLayer(
+        this.createMultiLineStringFromPoints(
+          outerBoundary.slice(
+            idx1 < idx2 ? idx1 + 1 : idx2 + 1,
+            idx1 < idx2 ? idx2 : idx1
+          )
+        ),
+        lineStyle,
+        false
+      );
+    } else {
+      this.addLayer(
+        this.createMultiLineStringFromPoints([
+          ...outerBoundary.slice(idx2, outerBoundary.length),
+          ...outerBoundary.slice(0, idx1),
+        ]),
+        lineStyle,
+        false
+      );
+    }
   }
 
   findClosestPointFromBoundary(point: number[], outerBoundary: number[][]) {
@@ -229,7 +327,6 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   addLayer(geojson: GeojsonModel, style: Style, zoomToFeature: boolean) {
-    //console.log('geojson: ', geojson.features[0].geometry.coordinates);
     this.map.getLayers().forEach((layer) => {
       if (layer instanceof VectorLayer) {
         (layer as VectorLayer<VectorSource<Geometry>>)
