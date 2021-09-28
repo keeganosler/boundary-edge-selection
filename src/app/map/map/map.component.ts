@@ -153,88 +153,25 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     });
     this.map.addInteraction(this.modifyInteraction);
     this.modifyInteraction.setActive(true);
-    this.endPointFeature.on('change', (e) => {
-      this.startPointMoving = false;
-    });
-    this.startPointFeature.on('change', (e) => {
-      this.startPointMoving = true;
+    this.modifyInteraction.on('modifyend', (e) => {
+      this.snapToBoundaryLine();
     });
     this.map.on('pointerdrag', (e) => {
-      this.snapToBoundaryLine(e.coordinate, this.startPointMoving);
       this.updateLine();
     });
   }
 
-  snapToBoundaryLine(coordinate: number[], firstPoint: boolean) {
-    if (firstPoint != undefined) {
-      let closestFeature =
-        this.boundaryVectorSource.getClosestFeatureToCoordinate(coordinate);
-      let geometry = closestFeature.getGeometry();
-      let closestPoint = geometry.getClosestPoint(coordinate);
-      if (firstPoint) {
-        (this.startPointFeature.getGeometry() as Point).setCoordinates(
-          closestPoint
-        );
-      } else {
-        (this.endPointFeature.getGeometry() as Point).setCoordinates(
-          closestPoint
-        );
-      }
-    }
-  }
-
-  updateLine2(coordinate: number[]) {
-    let outerBoundary = TestData.boundary.polygons.map(
-      (p) => p.rings[0].ring
-    )[0];
-    let currentPoints: number[][] = [];
+  snapToBoundaryLine() {
     this.pointsVectorSource
       .getFeatures()
       .forEach((feature: Feature<Geometry>) => {
-        let point = this.findClosestPointFromBoundary(
-          toLonLat((feature.getGeometry() as Point).getCoordinates()),
-          outerBoundary
-        );
-        currentPoints.push(point);
-        let geoPoint = this.boundaryVectorSource
-          .getClosestFeatureToCoordinate(coordinate)
+        let currentPoint = (feature.getGeometry() as Point).getCoordinates();
+        let closestPoint = this.boundaryVectorSource
+          .getClosestFeatureToCoordinate(currentPoint)
           .getGeometry()
-          .getClosestPoint(coordinate);
-        if (feature == this.startPointFeature) {
-          (this.startPointFeature.getGeometry() as Point).setCoordinates(
-            geoPoint
-          );
-        } else if (feature == this.endPointFeature) {
-          (this.endPointFeature.getGeometry() as Point).setCoordinates(
-            geoPoint
-          );
-        }
+          .getClosestPoint(currentPoint);
+        (feature.getGeometry() as Point).setCoordinates(closestPoint);
       });
-    let idx1: number = outerBoundary.indexOf(currentPoints[0]);
-    let idx2: number = outerBoundary.indexOf(currentPoints[1]);
-    let sum1: number = idx2 - idx1;
-    let sum2: number = idx1 + (outerBoundary.length - idx2);
-    if (sum1 < sum2) {
-      this.addLayer(
-        this.createMultiLineStringFromPoints(
-          outerBoundary.slice(
-            idx1 < idx2 ? idx1 + 1 : idx2 + 1,
-            idx1 < idx2 ? idx2 : idx1
-          )
-        ),
-        lineStyle,
-        false
-      );
-    } else {
-      this.addLayer(
-        this.createMultiLineStringFromPoints([
-          ...outerBoundary.slice(idx2, outerBoundary.length),
-          ...outerBoundary.slice(0, idx1),
-        ]),
-        lineStyle,
-        false
-      );
-    }
   }
 
   updateLine() {
@@ -244,11 +181,10 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     let currentPoints: number[][] = this.pointsVectorSource
       .getFeatures()
       .map((feature: Feature<Geometry>) => {
-        let point = this.findClosestPointFromBoundary(
+        return this.findClosestPointFromBoundary(
           toLonLat((feature.getGeometry() as Point).getCoordinates()),
           outerBoundary
         );
-        return point;
       });
     let idx1: number = outerBoundary.indexOf(currentPoints[0]);
     let idx2: number = outerBoundary.indexOf(currentPoints[1]);
