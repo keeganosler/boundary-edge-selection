@@ -11,7 +11,7 @@ import GeoJSON from 'ol/format/GeoJSON';
 import Geometry from 'ol/geom/Geometry';
 import LineString from 'ol/geom/LineString';
 import Point from 'ol/geom/Point';
-import { Modify, Snap } from 'ol/interaction';
+import { Modify } from 'ol/interaction';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
 import { fromLonLat, toLonLat } from 'ol/proj';
@@ -71,10 +71,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     }),
   });
-  isDrawing: boolean = false;
-  geomtry: any;
-  collectedPoints: number[][] = [];
-  drawingClockwise: boolean;
+
   startPointFeature: Feature<Geometry> = new Feature({
     geometry: new Point(
       fromLonLat(TestData.boundary.polygons.map((p) => p.rings[0].ring)[0][0])
@@ -106,7 +103,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     source: this.pointsVectorSource,
     updateWhileInteracting: true,
   });
-  startPointMoving: boolean;
+
   boundaryVectorSource = new VectorSource({
     features: new GeoJSON().readFeatures(
       this.createMultiPolygonFromBoundary(TestData.boundary),
@@ -119,8 +116,18 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     source: this.boundaryVectorSource,
     style: fieldStyle,
   });
+
+  edgeLineFeature: Feature<Geometry> = new Feature({
+    geometry: new LineString([]),
+  });
+  edgeLineVectorSource: VectorSource<Geometry> = new VectorSource({
+    features: [this.edgeLineFeature],
+  });
+  edgeLineVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
+    source: this.edgeLineVectorSource,
+  });
+
   modifyInteraction: Modify;
-  snapInteraction: Snap;
 
   ngOnInit(): void {
     setTimeout(() => this.map?.updateSize());
@@ -132,6 +139,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.layers.push(this.satellite);
     this.startPointFeature.setStyle(pointStyle1);
     this.endPointFeature.setStyle(pointStyle2);
+    this.edgeLineFeature.setStyle(lineStyle);
     this.map = new Map({
       interactions: [],
       target: this.viewMap.nativeElement,
@@ -179,42 +187,55 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     let outerBoundary = TestData.boundary.polygons.map(
       (p) => p.rings[0].ring
     )[0];
-    let currentPoints: { feature: string; coordinates: number[] }[] =
-      this.pointsVectorSource
-        .getFeatures()
-        .map((feature: Feature<Geometry>) => {
-          return {
-            feature: feature.getProperties().properties.start ? 'start' : 'end',
-            coordinates: this.findClosestPointFromBoundary(
-              toLonLat((feature.getGeometry() as Point).getCoordinates()),
-              outerBoundary
-            ),
-          };
-        });
+    let currentPoints: {
+      feature: string;
+      geojsonCoordinates: number[];
+      boundaryCoordinates: number[];
+    }[] = this.pointsVectorSource
+      .getFeatures()
+      .map((feature: Feature<Geometry>) => {
+        return {
+          feature: feature.getProperties().properties.start ? 'start' : 'end',
+          geojsonCoordinates: this.boundaryVectorSource
+            .getClosestFeatureToCoordinate(
+              (feature.getGeometry() as Point).getCoordinates()
+            )
+            .getGeometry()
+            .getClosestPoint((feature.getGeometry() as Point).getCoordinates()),
+          boundaryCoordinates: this.findClosestPointFromBoundary(
+            toLonLat((feature.getGeometry() as Point).getCoordinates()),
+            outerBoundary
+          ),
+        };
+      });
     let idx1: number = outerBoundary.indexOf(
-      currentPoints.find((f) => f.feature == 'start').coordinates
+      currentPoints.find((f) => f.feature == 'start').boundaryCoordinates
     );
     let idx2: number = outerBoundary.indexOf(
-      currentPoints.find((f) => f.feature == 'end').coordinates
+      currentPoints.find((f) => f.feature == 'end').boundaryCoordinates
     );
+    this.map.removeLayer(this.edgeLineVectorLayer);
+    let line: number[][];
     if (idx2 > idx1) {
-      this.addLayer(
-        this.createMultiLineStringFromPoints(
-          outerBoundary.slice(idx1 + 1, idx2)
-        ),
-        lineStyle,
-        false
-      );
+      line = outerBoundary.slice(idx1 + 1, idx2);
     } else {
-      this.addLayer(
-        this.createMultiLineStringFromPoints([
-          ...outerBoundary.slice(idx1, outerBoundary.length),
-          ...outerBoundary.slice(0, idx2),
-        ]),
-        lineStyle,
-        false
-      );
+      line = [
+        ...outerBoundary.slice(idx1, outerBoundary.length),
+        ...outerBoundary.slice(0, idx2),
+      ];
     }
+    line[0] = toLonLat(
+      currentPoints.find((f) => f.feature == 'start').geojsonCoordinates
+    );
+    line[line.length] = toLonLat(
+      currentPoints.find((f) => f.feature == 'end').geojsonCoordinates
+    );
+    (this.edgeLineFeature.getGeometry() as LineString).setCoordinates(
+      line.map((c) => {
+        return fromLonLat(c);
+      })
+    );
+    this.map.addLayer(this.edgeLineVectorLayer);
   }
 
   findClosestPointFromBoundary(point: number[], outerBoundary: number[][]) {
@@ -224,23 +245,6 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
         ? curr
         : prev;
     });
-  }
-
-  createMultiLineStringFromPoints(points: number[][]) {
-    let features: any[] = [];
-    let feature = {
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: points,
-      },
-      properties: null,
-    };
-    features.push(feature);
-    return {
-      type: 'FeatureCollection',
-      features: features,
-    } as GeojsonModel;
   }
 
   createMultiPolygonFromBoundary(boundary: BoundaryModel) {
@@ -264,36 +268,5 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       type: 'FeatureCollection',
       features: features,
     } as GeojsonModel;
-  }
-
-  addLayer(geojson: GeojsonModel, style: Style, zoomToFeature: boolean) {
-    this.map.getLayers().forEach((layer) => {
-      if (layer instanceof VectorLayer) {
-        (layer as VectorLayer<VectorSource<Geometry>>)
-          .getSource()
-          .getFeatures()
-          .forEach((feature) => {
-            if (feature.getGeometry() instanceof LineString) {
-              this.map.removeLayer(layer);
-            }
-          });
-      }
-    });
-    let vec = new VectorSource({
-      features: new GeoJSON().readFeatures(geojson, {
-        featureProjection: 'EPSG:3857',
-      }),
-    });
-    let vecLayer = new VectorLayer({
-      source: vec,
-      style: style,
-    });
-    this.map.addLayer(vecLayer);
-    if (zoomToFeature) {
-      this.map.getView().fit(vec.getExtent(), {
-        size: this.map.getSize(),
-        padding: [25, 25, 25, 25],
-      });
-    }
   }
 }
