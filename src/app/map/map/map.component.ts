@@ -44,7 +44,7 @@ const pointStyle1 = new Style({
     color: 'red',
     src: '/assets/map-marker-alt.png',
     scale: 0.075,
-    anchor: [0.5, 1],
+    anchor: [0.5, 0.5],
   }),
 });
 const pointStyle2 = new Style({
@@ -52,7 +52,7 @@ const pointStyle2 = new Style({
     color: 'green',
     src: '/assets/map-marker-alt.png',
     scale: 0.075,
-    anchor: [0.5, 1],
+    anchor: [0.5, 0.5],
   }),
 });
 
@@ -81,6 +81,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     ),
     properties: {
       start: true,
+      end: false,
     },
   });
   endPointFeature: Feature<Geometry> = new Feature({
@@ -94,6 +95,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       )
     ),
     properties: {
+      start: false,
       end: true,
     },
   });
@@ -148,7 +150,6 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       padding: [25, 25, 25, 25],
     });
     this.modifyInteraction = new Modify({
-      hitDetection: this.pointsVectorLayer,
       source: this.pointsVectorSource,
     });
     this.map.addInteraction(this.modifyInteraction);
@@ -178,25 +179,28 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     let outerBoundary = TestData.boundary.polygons.map(
       (p) => p.rings[0].ring
     )[0];
-    let currentPoints: number[][] = this.pointsVectorSource
-      .getFeatures()
-      .map((feature: Feature<Geometry>) => {
-        return this.findClosestPointFromBoundary(
-          toLonLat((feature.getGeometry() as Point).getCoordinates()),
-          outerBoundary
-        );
-      });
-    let idx1: number = outerBoundary.indexOf(currentPoints[0]);
-    let idx2: number = outerBoundary.indexOf(currentPoints[1]);
-    let sum1: number = idx2 - idx1;
-    let sum2: number = idx1 + (outerBoundary.length - idx2);
-    if (sum1 < sum2) {
+    let currentPoints: { feature: string; coordinates: number[] }[] =
+      this.pointsVectorSource
+        .getFeatures()
+        .map((feature: Feature<Geometry>) => {
+          return {
+            feature: feature.getProperties().properties.start ? 'start' : 'end',
+            coordinates: this.findClosestPointFromBoundary(
+              toLonLat((feature.getGeometry() as Point).getCoordinates()),
+              outerBoundary
+            ),
+          };
+        });
+    let idx1: number = outerBoundary.indexOf(
+      currentPoints.find((f) => f.feature == 'start').coordinates
+    );
+    let idx2: number = outerBoundary.indexOf(
+      currentPoints.find((f) => f.feature == 'end').coordinates
+    );
+    if (idx2 > idx1) {
       this.addLayer(
         this.createMultiLineStringFromPoints(
-          outerBoundary.slice(
-            idx1 < idx2 ? idx1 + 1 : idx2 + 1,
-            idx1 < idx2 ? idx2 : idx1
-          )
+          outerBoundary.slice(idx1 + 1, idx2)
         ),
         lineStyle,
         false
@@ -204,8 +208,8 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     } else {
       this.addLayer(
         this.createMultiLineStringFromPoints([
-          ...outerBoundary.slice(idx2, outerBoundary.length),
-          ...outerBoundary.slice(0, idx1),
+          ...outerBoundary.slice(idx1, outerBoundary.length),
+          ...outerBoundary.slice(0, idx2),
         ]),
         lineStyle,
         false
