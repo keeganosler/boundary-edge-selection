@@ -184,52 +184,46 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   updateLine() {
+    let startPointIndex: number;
+    let endPointIndex: number;
+    let startPointCoordinates: number[];
+    let endPointCoordinates: number[];
     let outerBoundary = TestData.boundary.polygons.map(
       (p) => p.rings[0].ring
     )[0];
-    let currentPoints: {
-      feature: string;
-      geojsonCoordinates: number[];
-      boundaryCoordinates: number[];
-    }[] = this.pointsVectorSource
+    this.pointsVectorSource
       .getFeatures()
-      .map((feature: Feature<Geometry>) => {
-        return {
-          feature: feature.getProperties().properties.start ? 'start' : 'end',
-          geojsonCoordinates: this.boundaryVectorSource
-            .getClosestFeatureToCoordinate(
-              (feature.getGeometry() as Point).getCoordinates()
-            )
-            .getGeometry()
-            .getClosestPoint((feature.getGeometry() as Point).getCoordinates()),
-          boundaryCoordinates: this.findClosestPointFromBoundary(
-            toLonLat((feature.getGeometry() as Point).getCoordinates()),
-            outerBoundary
-          ),
-        };
+      .forEach((feature: Feature<Geometry>) => {
+        let geojsonCoordinates = this.boundaryVectorSource
+          .getClosestFeatureToCoordinate(
+            (feature.getGeometry() as Point).getCoordinates()
+          )
+          .getGeometry()
+          .getClosestPoint((feature.getGeometry() as Point).getCoordinates());
+        let boundaryCoordinates = this.findClosestPointFromBoundary(
+          toLonLat((feature.getGeometry() as Point).getCoordinates()),
+          outerBoundary
+        );
+        if (feature.getProperties().properties.start) {
+          startPointCoordinates = geojsonCoordinates;
+          startPointIndex = outerBoundary.indexOf(boundaryCoordinates);
+        } else {
+          endPointCoordinates = geojsonCoordinates;
+          endPointIndex = outerBoundary.indexOf(boundaryCoordinates);
+        }
       });
-    let idx1: number = outerBoundary.indexOf(
-      currentPoints.find((f) => f.feature == 'start').boundaryCoordinates
-    );
-    let idx2: number = outerBoundary.indexOf(
-      currentPoints.find((f) => f.feature == 'end').boundaryCoordinates
-    );
     this.map.removeLayer(this.edgeLineVectorLayer);
     let line: number[][];
-    if (idx2 > idx1) {
-      line = outerBoundary.slice(idx1 + 1, idx2);
+    if (endPointIndex > startPointIndex) {
+      line = outerBoundary.slice(startPointIndex + 1, endPointIndex);
     } else {
       line = [
-        ...outerBoundary.slice(idx1, outerBoundary.length),
-        ...outerBoundary.slice(0, idx2),
+        ...outerBoundary.slice(startPointIndex, outerBoundary.length),
+        ...outerBoundary.slice(0, endPointIndex),
       ];
     }
-    line[0] = toLonLat(
-      currentPoints.find((f) => f.feature == 'start').geojsonCoordinates
-    );
-    line[line.length] = toLonLat(
-      currentPoints.find((f) => f.feature == 'end').geojsonCoordinates
-    );
+    line[0] = toLonLat(startPointCoordinates);
+    line[line.length] = toLonLat(endPointCoordinates);
     (this.edgeLineFeature.getGeometry() as LineString).setCoordinates(
       line.map((c) => {
         return fromLonLat(c);
