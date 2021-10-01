@@ -6,7 +6,7 @@ import {
   OnInit,
   ViewChild,
 } from '@angular/core';
-import { Feature, Map, View } from 'ol';
+import { Feature, Map, MapBrowserEvent, View } from 'ol';
 import GeoJSON from 'ol/format/GeoJSON';
 import Geometry from 'ol/geom/Geometry';
 import LineString from 'ol/geom/LineString';
@@ -17,6 +17,7 @@ import VectorLayer from 'ol/layer/Vector';
 import { fromLonLat, toLonLat } from 'ol/proj';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
+import { getLength } from 'ol/sphere';
 import { Fill, Icon, Stroke, Style } from 'ol/style';
 import TestData from './boundary-data.model';
 import { BoundaryModel } from './boundary.model';
@@ -127,6 +128,26 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     source: this.edgeLineVectorSource,
   });
 
+  lineFeature: Feature<Geometry> = new Feature({
+    geometry: new LineString(
+      TestData.boundary.polygons
+        .map((p) => p.rings[0].ring)[0]
+        .slice(
+          0,
+          TestData.boundary.polygons.map((p) => p.rings[0].ring)[0].length / 2
+        )
+        .map((c) => {
+          return fromLonLat(c);
+        })
+    ),
+  });
+  lineVectorSource: VectorSource<Geometry> = new VectorSource({
+    features: [this.lineFeature],
+  });
+  lineVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
+    source: this.lineVectorSource,
+  });
+
   modifyInteraction: Modify;
 
   ngOnInit(): void {
@@ -140,6 +161,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.startPointFeature.setStyle(pointStyle1);
     this.endPointFeature.setStyle(pointStyle2);
     this.edgeLineFeature.setStyle(lineStyle);
+    this.lineFeature.setStyle(lineStyle);
     this.map = new Map({
       interactions: [],
       target: this.viewMap.nativeElement,
@@ -152,25 +174,55 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     });
 
     this.map.addLayer(this.boundaryVectorLayer);
-    this.map.addLayer(this.pointsVectorLayer);
+    this.map.addLayer(this.lineVectorLayer);
+    // this.map.addLayer(this.pointsVectorLayer);
     this.map.getView().fit(this.boundaryVectorSource.getExtent(), {
       size: this.map.getSize(),
       padding: [25, 25, 25, 25],
     });
     this.modifyInteraction = new Modify({
-      source: this.pointsVectorSource,
+      //source: this.pointsVectorSource,
+      source: this.lineVectorSource,
+      condition: this.modifyCondition,
+      snapToPointer: true,
     });
     this.map.addInteraction(this.modifyInteraction);
     this.modifyInteraction.setActive(true);
     this.modifyInteraction.on('modifyend', (e) => {
-      this.snapToBoundaryLine();
+      //this.snapPointsToBoundary();
+      this.snapLineToBoundary();
     });
     this.map.on('pointerdrag', (e) => {
-      this.updateLine();
+      //this.updateLineBetweenPoints();
     });
   }
 
-  snapToBoundaryLine() {
+  modifyCondition = (e: MapBrowserEvent<any>) => {
+    let condition = false;
+    let closestPointToCurrent = (
+      this.lineFeature.getGeometry() as LineString
+    ).getClosestPoint(e.coordinate);
+    let currentStartPoint = (
+      this.lineFeature.getGeometry() as LineString
+    ).getCoordinates()[0];
+    let currentEndPoint = (
+      this.lineFeature.getGeometry() as LineString
+    ).getCoordinates()[
+      (this.lineFeature.getGeometry() as LineString).getCoordinates().length - 1
+    ];
+
+    if (
+      (closestPointToCurrent[0] == currentStartPoint[0] &&
+        closestPointToCurrent[1] == currentStartPoint[1]) ||
+      (closestPointToCurrent[0] == currentEndPoint[0] &&
+        closestPointToCurrent[1] == currentEndPoint[1])
+    ) {
+      condition = true;
+    }
+    return condition;
+  };
+
+  snapPointsToBoundary() {
     this.pointsVectorSource
       .getFeatures()
       .forEach((feature: Feature<Geometry>) => {
@@ -183,7 +235,55 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       });
   }
 
-  updateLine() {
+  snapLineToBoundary() {
+    this.map.removeLayer(this.lineVectorLayer);
+    let outerBoundary = TestData.boundary.polygons.map(
+      (p) => p.rings[0].ring
+    )[0];
+    let arrayOfCoordinates: number[][] = (
+      this.lineFeature.getGeometry() as LineString
+    ).getCoordinates();
+    let newStartPoint = (
+      this.lineFeature.getGeometry() as LineString
+    ).getFirstCoordinate();
+    let newEndPoint = (
+      this.lineFeature.getGeometry() as LineString
+    ).getLastCoordinate();
+    let idx1: number = outerBoundary.indexOf(
+      this.findClosestPointFromBoundary(toLonLat(newStartPoint), outerBoundary)
+    );
+    let idx2: number = outerBoundary.indexOf(
+      this.findClosestPointFromBoundary(toLonLat(newEndPoint), outerBoundary)
+    );
+    if (idx2 > idx1) {
+      arrayOfCoordinates = outerBoundary.slice(idx1, idx2).map((c) => {
+        return fromLonLat(c);
+      });
+    } else {
+      arrayOfCoordinates = [
+        ...outerBoundary.slice(idx1, outerBoundary.length),
+        ...outerBoundary.slice(0, idx2),
+      ].map((c) => {
+        return fromLonLat(c);
+      });
+    }
+    arrayOfCoordinates[0] = this.boundaryVectorSource
+      .getClosestFeatureToCoordinate(newStartPoint)
+      .getGeometry()
+      .getClosestPoint(newStartPoint);
+    arrayOfCoordinates[arrayOfCoordinates.length - 1] =
+      this.boundaryVectorSource
+        .getClosestFeatureToCoordinate(newEndPoint)
+        .getGeometry()
+        .getClosestPoint(newEndPoint);
+
+    (this.lineFeature.getGeometry() as LineString).setCoordinates(
+      arrayOfCoordinates
+    );
+    this.map.addLayer(this.lineVectorLayer);
+  }
+
+  updateLineBetweenPoints() {
     let startPointIndex: number;
     let endPointIndex: number;
     let startPointCoordinates: number[];
@@ -234,8 +334,8 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   findClosestPointFromBoundary(point: number[], outerBoundary: number[][]) {
     return outerBoundary.reduce((prev, curr) => {
-      return Math.abs(curr[0] - point[0]) < Math.abs(prev[0] - point[0]) &&
-        Math.abs(curr[1] - point[1]) < Math.abs(prev[1] - point[1])
+      return getLength(new LineString([curr, point])) <
+        getLength(new LineString([prev, point]))
         ? curr
         : prev;
     });
