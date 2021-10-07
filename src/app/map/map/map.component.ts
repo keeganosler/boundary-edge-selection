@@ -71,37 +71,37 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     }),
   });
 
-  startPointFeature: Feature<Geometry> = new Feature({
-    geometry: new Point(
-      fromLonLat(TestData.boundary.polygons.map((p) => p.rings[0].ring)[0][0])
-    ),
-    properties: {
-      start: true,
-      end: false,
-    },
-  });
-  endPointFeature: Feature<Geometry> = new Feature({
-    geometry: new Point(
-      fromLonLat(
-        TestData.boundary.polygons.map((p) => p.rings[0].ring)[0][
-          Math.round(
-            TestData.boundary.polygons.map((p) => p.rings[0].ring)[0].length / 2
-          )
-        ]
-      )
-    ),
-    properties: {
-      start: false,
-      end: true,
-    },
-  });
-  pointsVectorSource: VectorSource<Geometry> = new VectorSource({
-    features: [this.startPointFeature, this.endPointFeature],
-  });
-  pointsVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
-    source: this.pointsVectorSource,
-    updateWhileInteracting: true,
-  });
+  // startPointFeature: Feature<Geometry> = new Feature({
+  //   geometry: new Point(
+  //     fromLonLat(TestData.boundary.polygons.map((p) => p.rings[0].ring)[0][0])
+  //   ),
+  //   properties: {
+  //     start: true,
+  //     end: false,
+  //   },
+  // });
+  // endPointFeature: Feature<Geometry> = new Feature({
+  //   geometry: new Point(
+  //     fromLonLat(
+  //       TestData.boundary.polygons.map((p) => p.rings[0].ring)[0][
+  //         Math.round(
+  //           TestData.boundary.polygons.map((p) => p.rings[0].ring)[0].length / 2
+  //         )
+  //       ]
+  //     )
+  //   ),
+  //   properties: {
+  //     start: false,
+  //     end: true,
+  //   },
+  // });
+  // pointsVectorSource: VectorSource<Geometry> = new VectorSource({
+  //   features: [this.startPointFeature, this.endPointFeature],
+  // });
+  // pointsVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
+  //   source: this.pointsVectorSource,
+  //   updateWhileInteracting: true,
+  // });
 
   boundaryVectorSource = new VectorSource({
     features: new GeoJSON().readFeatures(
@@ -116,15 +116,15 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     style: fieldStyle,
   });
 
-  edgeLineFeature: Feature<Geometry> = new Feature({
-    geometry: new LineString([]),
-  });
-  edgeLineVectorSource: VectorSource<Geometry> = new VectorSource({
-    features: [this.edgeLineFeature],
-  });
-  edgeLineVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
-    source: this.edgeLineVectorSource,
-  });
+  // edgeLineFeature: Feature<Geometry> = new Feature({
+  //   geometry: new LineString([]),
+  // });
+  // edgeLineVectorSource: VectorSource<Geometry> = new VectorSource({
+  //   features: [this.edgeLineFeature],
+  // });
+  // edgeLineVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
+  //   source: this.edgeLineVectorSource,
+  // });
 
   lineFeature: Feature<Geometry> = new Feature({
     geometry: new LineString(
@@ -155,8 +155,8 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     let endCoord = geometry.getLastCoordinate();
     geometry.forEachSegment((x, y) => {
       if (
-        (x[0] == startCoord[0] && x[1] == startCoord[1]) ||
-        (x[0] == endCoord[0] && x[1] == endCoord[1])
+        this.coordinatesMatch(x, startCoord) ||
+        this.coordinatesMatch(x, endCoord)
       ) {
         styles.push(
           new Style({
@@ -171,8 +171,8 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
         );
       }
       if (
-        (y[0] == startCoord[0] && y[1] == startCoord[1]) ||
-        (y[0] == endCoord[0] && y[1] == endCoord[1])
+        this.coordinatesMatch(y, startCoord) ||
+        this.coordinatesMatch(y, endCoord)
       ) {
         styles.push(
           new Style({
@@ -198,9 +198,8 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.layers.push(this.satellite);
-    this.startPointFeature.setStyle(pointStyle);
-    this.endPointFeature.setStyle(pointStyle);
-    //this.edgeLineFeature.setStyle(lineStyle);
+    // this.startPointFeature.setStyle(pointStyle);
+    // this.endPointFeature.setStyle(pointStyle);
     this.lineFeature.setStyle(this.lineStyleFunction);
     this.map = new Map({
       interactions: [],
@@ -212,7 +211,6 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
         zoom: 4,
       }),
     });
-
     this.map.addLayer(this.boundaryVectorLayer);
     this.map.addLayer(this.lineVectorLayer);
     // this.map.addLayer(this.pointsVectorLayer);
@@ -253,28 +251,26 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     ];
 
     if (
-      (closestPointToCurrent[0] == currentStartPoint[0] &&
-        closestPointToCurrent[1] == currentStartPoint[1]) ||
-      (closestPointToCurrent[0] == currentEndPoint[0] &&
-        closestPointToCurrent[1] == currentEndPoint[1])
+      this.coordinatesMatch(closestPointToCurrent, currentStartPoint) ||
+      this.coordinatesMatch(closestPointToCurrent, currentEndPoint)
     ) {
       condition = true;
     }
     return condition;
   };
 
-  snapPointsToBoundary() {
-    this.pointsVectorSource
-      .getFeatures()
-      .forEach((feature: Feature<Geometry>) => {
-        let currentPoint = (feature.getGeometry() as Point).getCoordinates();
-        let closestPoint = this.boundaryVectorSource
-          .getClosestFeatureToCoordinate(currentPoint)
-          .getGeometry()
-          .getClosestPoint(currentPoint);
-        (feature.getGeometry() as Point).setCoordinates(closestPoint);
-      });
-  }
+  // snapPointsToBoundary() {
+  //   this.pointsVectorSource
+  //     .getFeatures()
+  //     .forEach((feature: Feature<Geometry>) => {
+  //       let currentPoint = (feature.getGeometry() as Point).getCoordinates();
+  //       let closestPoint = this.boundaryVectorSource
+  //         .getClosestFeatureToCoordinate(currentPoint)
+  //         .getGeometry()
+  //         .getClosestPoint(currentPoint);
+  //       (feature.getGeometry() as Point).setCoordinates(closestPoint);
+  //     });
+  // }
 
   snapLineToBoundary() {
     this.map.removeLayer(this.lineVectorLayer);
@@ -324,54 +320,54 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.map.addLayer(this.lineVectorLayer);
   }
 
-  updateLineBetweenPoints() {
-    let startPointIndex: number;
-    let endPointIndex: number;
-    let startPointCoordinates: number[];
-    let endPointCoordinates: number[];
-    let outerBoundary = TestData.boundary.polygons.map(
-      (p) => p.rings[0].ring
-    )[0];
-    this.pointsVectorSource
-      .getFeatures()
-      .forEach((feature: Feature<Geometry>) => {
-        let geojsonCoordinates = this.boundaryVectorSource
-          .getClosestFeatureToCoordinate(
-            (feature.getGeometry() as Point).getCoordinates()
-          )
-          .getGeometry()
-          .getClosestPoint((feature.getGeometry() as Point).getCoordinates());
-        let boundaryCoordinates = this.findClosestPointFromBoundary(
-          toLonLat((feature.getGeometry() as Point).getCoordinates()),
-          outerBoundary
-        );
-        if (feature.getProperties().properties.start) {
-          startPointCoordinates = geojsonCoordinates;
-          startPointIndex = outerBoundary.indexOf(boundaryCoordinates);
-        } else {
-          endPointCoordinates = geojsonCoordinates;
-          endPointIndex = outerBoundary.indexOf(boundaryCoordinates);
-        }
-      });
-    this.map.removeLayer(this.edgeLineVectorLayer);
-    let line: number[][];
-    if (endPointIndex > startPointIndex) {
-      line = outerBoundary.slice(startPointIndex + 1, endPointIndex);
-    } else {
-      line = [
-        ...outerBoundary.slice(startPointIndex, outerBoundary.length),
-        ...outerBoundary.slice(0, endPointIndex),
-      ];
-    }
-    line[0] = toLonLat(startPointCoordinates);
-    line[line.length] = toLonLat(endPointCoordinates);
-    (this.edgeLineFeature.getGeometry() as LineString).setCoordinates(
-      line.map((c) => {
-        return fromLonLat(c);
-      })
-    );
-    this.map.addLayer(this.edgeLineVectorLayer);
-  }
+  // updateLineBetweenPoints() {
+  //   let startPointIndex: number;
+  //   let endPointIndex: number;
+  //   let startPointCoordinates: number[];
+  //   let endPointCoordinates: number[];
+  //   let outerBoundary = TestData.boundary.polygons.map(
+  //     (p) => p.rings[0].ring
+  //   )[0];
+  //   this.pointsVectorSource
+  //     .getFeatures()
+  //     .forEach((feature: Feature<Geometry>) => {
+  //       let geojsonCoordinates = this.boundaryVectorSource
+  //         .getClosestFeatureToCoordinate(
+  //           (feature.getGeometry() as Point).getCoordinates()
+  //         )
+  //         .getGeometry()
+  //         .getClosestPoint((feature.getGeometry() as Point).getCoordinates());
+  //       let boundaryCoordinates = this.findClosestPointFromBoundary(
+  //         toLonLat((feature.getGeometry() as Point).getCoordinates()),
+  //         outerBoundary
+  //       );
+  //       if (feature.getProperties().properties.start) {
+  //         startPointCoordinates = geojsonCoordinates;
+  //         startPointIndex = outerBoundary.indexOf(boundaryCoordinates);
+  //       } else {
+  //         endPointCoordinates = geojsonCoordinates;
+  //         endPointIndex = outerBoundary.indexOf(boundaryCoordinates);
+  //       }
+  //     });
+  //   this.map.removeLayer(this.edgeLineVectorLayer);
+  //   let line: number[][];
+  //   if (endPointIndex > startPointIndex) {
+  //     line = outerBoundary.slice(startPointIndex + 1, endPointIndex);
+  //   } else {
+  //     line = [
+  //       ...outerBoundary.slice(startPointIndex, outerBoundary.length),
+  //       ...outerBoundary.slice(0, endPointIndex),
+  //     ];
+  //   }
+  //   line[0] = toLonLat(startPointCoordinates);
+  //   line[line.length] = toLonLat(endPointCoordinates);
+  //   (this.edgeLineFeature.getGeometry() as LineString).setCoordinates(
+  //     line.map((c) => {
+  //       return fromLonLat(c);
+  //     })
+  //   );
+  //   this.map.addLayer(this.edgeLineVectorLayer);
+  // }
 
   findClosestPointFromBoundary(point: number[], outerBoundary: number[][]) {
     return outerBoundary.reduce((prev, curr) => {
@@ -403,5 +399,9 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       type: 'FeatureCollection',
       features: features,
     } as GeojsonModel;
+  }
+
+  coordinatesMatch(coordinate1: number[], coordinate2: number[]): boolean {
+    return coordinate1[0] == coordinate2[0] && coordinate1[1] == coordinate2[1];
   }
 }
