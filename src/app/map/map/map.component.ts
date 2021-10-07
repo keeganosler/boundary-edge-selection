@@ -18,7 +18,7 @@ import { fromLonLat, toLonLat } from 'ol/proj';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
 import { getLength } from 'ol/sphere';
-import { Fill, Icon, Stroke, Style } from 'ol/style';
+import { Circle, Fill, Stroke, Style } from 'ol/style';
 import TestData from './boundary-data.model';
 import { BoundaryModel } from './boundary.model';
 import { FeatureModel, GeojsonModel } from './geojson.model';
@@ -40,20 +40,18 @@ const lineStyle = new Style({
   }),
 });
 
-const pointStyle1 = new Style({
-  image: new Icon({
-    color: 'red',
-    src: '/assets/map-marker-alt.png',
-    scale: 0.075,
-    anchor: [0.5, 0.5],
+const modifyStyle = new Style({
+  image: new Circle({
+    radius: 0,
   }),
 });
-const pointStyle2 = new Style({
-  image: new Icon({
-    color: 'green',
-    src: '/assets/map-marker-alt.png',
-    scale: 0.075,
-    anchor: [0.5, 0.5],
+
+const pointStyle = new Style({
+  image: new Circle({
+    radius: 14,
+    fill: new Fill({
+      color: '#aa46be',
+    }),
   }),
 });
 
@@ -150,6 +148,48 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   modifyInteraction: Modify;
 
+  lineStyleFunction = (feature, resolution) => {
+    let geometry = feature.getGeometry() as LineString;
+    let styles = [lineStyle];
+    let startCoord = geometry.getFirstCoordinate();
+    let endCoord = geometry.getLastCoordinate();
+    geometry.forEachSegment((x, y) => {
+      if (
+        (x[0] == startCoord[0] && x[1] == startCoord[1]) ||
+        (x[0] == endCoord[0] && x[1] == endCoord[1])
+      ) {
+        styles.push(
+          new Style({
+            geometry: new Point(x),
+            image: new Circle({
+              radius: 12,
+              fill: new Fill({
+                color: '#aa46be',
+              }),
+            }),
+          })
+        );
+      }
+      if (
+        (y[0] == startCoord[0] && y[1] == startCoord[1]) ||
+        (y[0] == endCoord[0] && y[1] == endCoord[1])
+      ) {
+        styles.push(
+          new Style({
+            geometry: new Point(y),
+            image: new Circle({
+              radius: 12,
+              fill: new Fill({
+                color: '#aa46be',
+              }),
+            }),
+          })
+        );
+      }
+    });
+    return styles;
+  };
+
   ngOnInit(): void {
     setTimeout(() => this.map?.updateSize());
   }
@@ -158,10 +198,10 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.layers.push(this.satellite);
-    this.startPointFeature.setStyle(pointStyle1);
-    this.endPointFeature.setStyle(pointStyle2);
-    this.edgeLineFeature.setStyle(lineStyle);
-    this.lineFeature.setStyle(lineStyle);
+    this.startPointFeature.setStyle(pointStyle);
+    this.endPointFeature.setStyle(pointStyle);
+    //this.edgeLineFeature.setStyle(lineStyle);
+    this.lineFeature.setStyle(this.lineStyleFunction);
     this.map = new Map({
       interactions: [],
       target: this.viewMap.nativeElement,
@@ -185,6 +225,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
       source: this.lineVectorSource,
       condition: this.modifyCondition,
       snapToPointer: true,
+      style: modifyStyle,
     });
     this.map.addInteraction(this.modifyInteraction);
     this.modifyInteraction.setActive(true);
