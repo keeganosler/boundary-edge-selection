@@ -76,21 +76,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     style: fieldStyle,
   });
 
-  // lineFeature: Feature<Geometry> = new Feature({
-  //   geometry: new LineString(
-  //     TestData.boundary.polygons
-  //       .map((p) => p.rings[0].ring)[0]
-  //       .slice(
-  //         0,
-  //         TestData.boundary.polygons.map((p) => p.rings[0].ring)[0].length / 2
-  //       )
-  //       .map((c) => {
-  //         return fromLonLat(c);
-  //       })
-  //   ),
-  // });
   lineVectorSource: VectorSource<Geometry> = new VectorSource({
-    //features: [this.lineFeature],
     features: [],
   });
   lineVectorLayer: VectorLayer<VectorSource<Geometry>> = new VectorLayer({
@@ -163,7 +149,6 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.layers.push(this.satellite);
-    //this.lineFeature.setStyle(this.lineStyleFunction);
     this.map = new Map({
       interactions: [],
       target: this.viewMap.nativeElement,
@@ -190,7 +175,7 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     this.map.addInteraction(this.modifyInteraction);
     this.modifyInteraction.setActive(true);
     this.modifyInteraction.on('modifyend', (e) => {
-      this.snapLineToBoundary1(e);
+      this.snapLineToBoundary(e);
     });
   }
 
@@ -237,46 +222,15 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  snapLineToBoundary1(e: ModifyEvent) {
-    //this.map.removeLayer(this.lineVectorLayer);
-
-    console.log('current index: ', e.features.getArray());
-
-    let index = e.features.getArray()[0].getProperties().index;
-
-    let outerBoundary = TestData.boundary.polygons.map((p) => p.rings[0].ring)[
-      index
-    ];
-
-    //console.log('current outerboundary: ', outerBoundary);
-
-    let currentFeature = this.lineVectorSource.getFeatures()[index];
-
-    console.log('current feature: ', currentFeature.getProperties());
-
-    this.lineVectorSource.removeFeature(currentFeature);
-
-    //this.map.addLayer(this.lineVectorLayer);
-  }
-
   snapLineToBoundary(e: ModifyEvent) {
-    console.log('e: ', e.features.getArray());
-    this.map.removeLayer(this.lineVectorLayer);
-    // let lineFeature = e.features.getArray()[0] as Feature<Geometry>;
-    // let index = this.lineVectorSource.getFeatures().indexOf(lineFeature);
-    // console.log('has feature: ', this.lineVectorSource.hasFeature(lineFeature));
-
-    // console.log('index: ', index);
-
-    let linesArray = this.lineVectorSource.getFeatures();
-    //console.log('lines array: ', linesArray);
-    for (let j = 0; j < linesArray.length; j++) {
+    e.features.getArray().forEach((feature) => {
+      let currentFeature = this.lineVectorSource
+        .getFeatures()
+        .find((f) => f.getProperties().index == feature.getProperties().index);
+      this.lineVectorSource.removeFeature(currentFeature);
       let outerBoundary = TestData.boundary.polygons.map(
         (p) => p.rings[0].ring
-      )[j];
-      //console.log('outer boundary: ', outerBoundary);
-      let currentFeature = linesArray[j];
-      console.log('current feature: ', currentFeature.getProperties());
+      )[currentFeature.getProperties().index];
       let arrayOfCoordinates: number[][] = (
         currentFeature.getGeometry() as LineString
       ).getCoordinates();
@@ -308,66 +262,11 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
           return fromLonLat(c);
         });
       }
-      // arrayOfCoordinates[0] = this.boundaryVectorSource
-      //   .getClosestFeatureToCoordinate(newStartPoint)
-      //   .getGeometry()
-      //   .getClosestPoint(newStartPoint);
-      // arrayOfCoordinates[arrayOfCoordinates.length - 1] =
-      //   this.boundaryVectorSource
-      //     .getClosestFeatureToCoordinate(newEndPoint)
-      //     .getGeometry()
-      //     .getClosestPoint(newEndPoint);
-
       (currentFeature.getGeometry() as LineString).setCoordinates(
         arrayOfCoordinates
       );
-      //console.log('correct outerboundary: ', outerBoundary);
-    }
-
-    // let outerBoundary = TestData.boundary.polygons.map(
-    //   (p) => p.rings[0].ring
-    // )[0];
-    // let arrayOfCoordinates: number[][] = (
-    //   this.lineFeature.getGeometry() as LineString
-    // ).getCoordinates();
-    // let newStartPoint = (
-    //   this.lineFeature.getGeometry() as LineString
-    // ).getFirstCoordinate();
-    // let newEndPoint = (
-    //   this.lineFeature.getGeometry() as LineString
-    // ).getLastCoordinate();
-    // let idx1: number = outerBoundary.indexOf(
-    //   this.findClosestPointFromBoundary(toLonLat(newStartPoint), outerBoundary)
-    // );
-    // let idx2: number = outerBoundary.indexOf(
-    //   this.findClosestPointFromBoundary(toLonLat(newEndPoint), outerBoundary)
-    // );
-    // if (idx2 > idx1) {
-    //   arrayOfCoordinates = outerBoundary.slice(idx1, idx2).map((c) => {
-    //     return fromLonLat(c);
-    //   });
-    // } else {
-    //   arrayOfCoordinates = [
-    //     ...outerBoundary.slice(idx1, outerBoundary.length),
-    //     ...outerBoundary.slice(0, idx2),
-    //   ].map((c) => {
-    //     return fromLonLat(c);
-    //   });
-    // }
-    // arrayOfCoordinates[0] = this.boundaryVectorSource
-    //   .getClosestFeatureToCoordinate(newStartPoint)
-    //   .getGeometry()
-    //   .getClosestPoint(newStartPoint);
-    // arrayOfCoordinates[arrayOfCoordinates.length - 1] =
-    //   this.boundaryVectorSource
-    //     .getClosestFeatureToCoordinate(newEndPoint)
-    //     .getGeometry()
-    //     .getClosestPoint(newEndPoint);
-
-    // (this.lineFeature.getGeometry() as LineString).setCoordinates(
-    //   arrayOfCoordinates
-    // );
-    this.map.addLayer(this.lineVectorLayer);
+      this.lineVectorSource.addFeature(currentFeature);
+    });
   }
 
   findClosestPointFromBoundary(point: number[], outerBoundary: number[][]) {
