@@ -19,7 +19,7 @@ import { fromLonLat, toLonLat } from 'ol/proj';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
 import { getLength } from 'ol/sphere';
-import { Circle, Fill, RegularShape, Stroke, Style } from 'ol/style';
+import { Circle, Fill, Icon, Stroke, Style } from 'ol/style';
 import TestData from './boundary-data.model';
 import { BoundaryModel } from './boundary.model';
 import { FeatureModel, GeojsonModel } from './geojson.model';
@@ -99,17 +99,11 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
         styles.push(
           new Style({
             geometry: new Point(x),
-            image: new RegularShape({
-              points: 3,
-              radius: 7,
-              fill: new Fill({
-                color: 'black',
-              }),
-              stroke: new Stroke({
-                color: 'white',
-                width: 2,
-              }),
+            image: new Icon({
+              src: '/assets/caret.svg',
               rotation: -rotation,
+              scale: 0.025,
+              color: 'black',
             }),
           })
         );
@@ -122,17 +116,11 @@ export class MapComponent implements OnInit, AfterViewInit, OnDestroy {
         styles.push(
           new Style({
             geometry: new Point(y),
-            image: new RegularShape({
-              fill: new Fill({
-                color: 'black',
-              }),
-              stroke: new Stroke({
-                color: 'white',
-                width: 2,
-              }),
-              points: 3,
-              radius: 7,
+            image: new Icon({
+              src: '/assets/caret.svg',
               rotation: -rotation,
+              scale: 0.025,
+              color: 'black',
             }),
           })
         );
